@@ -1,0 +1,58 @@
+resources:
+  jobs:
+    property-revenue-pipeline-job:
+      name: property-revenue-pipeline-job
+
+      schedule:
+        # Run every day at 6:00 AM, ahead of the business day.
+        quartz_cron_expression: 0 0 6 * * ?
+        timezone_id: Europe/Amsterdam
+
+      email_notifications:
+        on_failure:
+          - notifications@example.com
+
+      tasks:
+        - task_key: pipeline-task
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.property_revenue.id}
+
+  pipelines:
+    property_revenue:
+      name: property-revenue-pipeline
+      # Serverless pipelines require an explicit UC catalog; `workspace` is the
+      # only managed (writable) catalog available in this trial workspace.
+      catalog: workspace
+      schema: revodata_assessment_${bundle.environment}
+      root_path: ../notebooks/pipelines/property_revenue
+
+      libraries:
+        # `explorations/**` is intentionally excluded: those are ad-hoc,
+        # manually-run notebooks (see notebooks/pipelines/property_revenue/README.md),
+        # not pipeline source -- including them runs their top-level `display(...)`
+        # calls as pipeline code, which fail since those gold tables don't exist yet.
+        - glob:
+            include: ../notebooks/pipelines/property_revenue/transformations/**
+
+      environment:
+        dependencies:
+          # Installs the wheel built from pyproject.toml, which pulls in shapely
+          # (needed for the postal code geo backfill) as a transitive dependency.
+          - ${var.wheel_path}
+
+      configuration:
+        # The bundle syncs ./data alongside the pipeline notebooks, so the raw
+        # files are read from the same workspace copy the repo ships.
+        rentals_path: ${workspace.file_path}/data/rentals.json
+        airbnb_path: ${workspace.file_path}/data/airbnb.csv
+        postcodes_geojson_path: ${workspace.file_path}/data/geo/post_codes.geojson
+        amsterdam_city: Amsterdam
+        # Simplifying assumption for Airbnb's annual revenue estimate; see docs/pipeline.md.
+        airbnb_assumed_occupied_nights_per_year: "180"
+
+      continuous: false
+
+      edition: ADVANCED
+      channel: CURRENT
+
+      serverless: true
