@@ -76,9 +76,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-".vscode/**/*.pyi" = [
-    "F403",     # "Blanket import used" - needed for type stubs
-]
 "notebooks/**/*.py" = [
     "D100",     # "Missing docstring in public module" - not needed for Databricks notebooks
     "INP001",   # "Part of an implicit namespace package. Add an `__init__.py`" - not needed for Databricks notebooks
@@ -120,4 +117,3 @@ name = "cz_conventional_commits"
 tag_format = "$version"
 version_scheme = "pep440"
 version_provider = "uv"
-update_changelog_on_bump = true

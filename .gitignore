@@ -178,9 +178,6 @@ pyrightconfig.json
 # Ignore Mac system files
 .DS_Store
 
-# Ignore VSCode settings
-# .vscode/
-
 # Ignore simulated Spark warehouse
 spark-warehouse/
 
