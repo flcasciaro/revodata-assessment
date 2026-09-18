@@ -87,25 +87,94 @@ Ensure you have the following tools installed:
 
 ## Quick Start
 
-Set up a fully configured development environment by running:
+Set up a fully configured development environment -- virtualenv, dependencies
+and pre-commit hooks -- by running:
 
 ```bash
 just
 ```
 
-You may need to update the `PROFILE_NAME` variable in the `.justfile` to match your Databricks profile name.  In addition, ensure that the host URL in `databricks.yml` matches your Databricks profile URL.
-
-Additional `just` commands are available for various tasks:
+That is all you need for linting. Everything else, **including the test
+suite**, talks to a real Databricks workspace; see below.
 
 ```bash
-just lint     # Run linting
-just test     # Run tests
-just validate # Validate bundle on default workspace
-just deploy   # Deploy bundle to default workspace
-just destroy  # Destroy bundle resources on default workspace
+just lint     # ruff, ty and pydoclint -- runs fully offline
+just test     # pytest -- REQUIRES a Databricks workspace, see Running it
+just list     # all available recipes
 ```
 
-Run `just list` to see all available commands.
+## Running it
+
+### 1. Authenticate
+
+```bash
+databricks auth login --host https://<your-workspace>.cloud.databricks.com
+```
+
+The `just` bundle recipes pass `--profile $PROFILE_NAME`, which defaults to
+`DEFAULT`. To use a different profile, set it in a git-ignored `.env` file at
+the repository root (the `.justfile` loads it automatically) rather than
+editing any tracked file:
+
+```bash
+echo 'PROFILE_NAME=my-profile' >> .env
+```
+
+### 2. Point the bundle at your workspace
+
+Two values assume the workspace this was built against, and both need changing
+for any other one:
+
+- `databricks.yml` -- `targets.dev.workspace.host` must match your profile's
+  host URL.
+- `resources/property_revenue_pipeline.yml` -- `catalog: workspace`. That was
+  the only managed catalog available in the trial workspace used here.
+  Substitute a Unity Catalog catalog you can write to.
+
+### 3. Deploy and run
+
+Deploying only syncs code and registers resources -- it does **not** execute
+anything. The pipeline has to be run separately:
+
+```bash
+just validate   # check the bundle resolves
+just deploy     # sync code + register the pipeline
+just run        # trigger a pipeline update -- this is what builds the tables
+just summary    # links to the deployed resources
+```
+
+The gold tables then exist as Delta tables in Unity Catalog. `just destroy`
+removes everything again.
+
+### 4. Tests
+
+`tests/conftest.py` opens a real serverless Databricks Connect session rather
+than a local Spark one, so 12 of the 48 tests need a reachable workspace and
+valid credentials. Without them those 12 fail with `default auth: cannot
+configure default credentials` while the other 36 pass. The same credentials
+drive CI, as two repository secrets -- see
+[Bundle Deployment](docs/bundle_deployment.md).
+
+```bash
+just test
+```
+
+### 5. Regenerating `data/output` (optional)
+
+The Parquet snapshots are committed, so this is only needed after changing the
+pipeline. It needs a Unity Catalog Volume, because Workspace Files do not
+support Spark's distributed writes:
+
+```bash
+databricks volumes create workspace revodata_assessment_dev exports MANAGED
+# run notebooks/export_gold_to_parquet.py in the workspace, then:
+databricks fs cp -r   dbfs:/Volumes/workspace/revodata_assessment_dev/exports/data_output   ./data/output
+```
+
+Replace each directory rather than copying over it -- Spark names every part
+file after a fresh transaction id, so copying on top leaves two part files per
+folder and silently doubles every table. Full detail in
+[Pipeline Design](docs/pipeline.md#exporting-to-dataoutput).
 
 ## Documentation
 

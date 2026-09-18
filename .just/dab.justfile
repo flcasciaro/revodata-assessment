@@ -25,6 +25,12 @@ deploy target=DEFAULT_TARGET:
 	echo "Deploying resources...";
 	databricks bundle deploy --profile {{ PROFILE_NAME }} --target {{ target }};
 
+# Trigger a pipeline update. Deploy only syncs code; this is what runs it.
+[group('dab')]
+run target=DEFAULT_TARGET:
+	echo "Running the pipeline...";
+	databricks bundle run property_revenue --profile {{ PROFILE_NAME }} --target {{ target }};
+
 # Destroy all deployed Databricks resources against target environment, targets development environment by default
 [group('dab')]
 [script]
