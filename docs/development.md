@@ -71,11 +71,10 @@ Ensure that the [`pre-commit`](https://pre-commit.com) hook defined in `.pre-com
 
 ## Local Development with Databricks Connect
 
-Run local code on Databricks compute. Four connection methods:
+Run local code on Databricks compute. Three connection methods:
 
 | Method | Use Case | Configuration |
 |--------|----------|---------------|
-| **VS Code Extension** | Visual cluster selection | [Install extension](https://marketplace.visualstudio.com/items?itemName=databricks.databricks) |
 | **Serverless** | Development, testing | `DatabricksSession.builder.serverless(True).getOrCreate()` |
 | **Profile-based** | Multiple workspaces | `Config(profile="<name>", cluster_id="<id>")` |
 | **Environment** | CI/CD pipelines | Set `DATABRICKS_CONFIG_PROFILE` and `DATABRICKS_HOST` in `.env` |
