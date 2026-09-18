@@ -35,7 +35,7 @@ expectations = {
 # COMMAND ----------
 
 
-@dp.table(
+@dp.materialized_view(
     name="silver_airbnb",
     table_properties={"quality": "silver"},
     comment="Cleaned Airbnb listings with postal codes backfilled via point-in-polygon lookup.",

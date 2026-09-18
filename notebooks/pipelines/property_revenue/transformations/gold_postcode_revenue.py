@@ -16,7 +16,7 @@ from revodata_assessment.transformations.gold import postcode_revenue_comparison
 # COMMAND ----------
 
 
-@dp.table(
+@dp.materialized_view(
     name="gold_postcode_revenue",
     table_properties={"quality": "gold"},
     comment="Per-postcode4 comparison of Kamernet vs. Airbnb estimated annual revenue.",
