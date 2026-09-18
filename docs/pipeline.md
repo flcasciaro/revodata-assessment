@@ -199,12 +199,6 @@ repository secrets -- the tests need them as much as the deploy does, since
 `tests/conftest.py` opens a real serverless Databricks Connect session
 rather than a local Spark one.
 
-`.azure/.azure-pipelines/` is the Azure DevOps equivalent that ships with
-the RevoData DAB template (`ci.yml` on push, `cd.yml` deploying to `test`
-then `prod` behind a manual approval). It is kept for reference but is not
-wired up: its `groupName`, `keyVaultName` and `azureSubscription` variables
-are still template placeholders.
-
 `.pre-commit-config.yaml` runs the same lint/format/type checks locally
 before a commit is made.
 

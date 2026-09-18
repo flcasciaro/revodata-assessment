@@ -6,23 +6,23 @@ The project is structured as follows:
 
 ```text
 revodata-assessment/
-├── .azure/                   # Azure DevOps pipelines
-├── .just/                          # just recipe imports (DAB, VS Code, shell settings)
-├── .vscode/                        # VSCode settings
+├── .github/workflows/              # GitHub Actions CI/CD
+├── .just/                          # just recipe imports (DAB, shell settings)
+├── data/                           # Source exports and the gold Parquet output
 ├── docs/                           # Documentation
-├── notebooks/                      # Databricks notebooks
-├── resources/                      # Databricks resources (jobs, pipelines)
+├── notebooks/                      # Databricks notebooks (pipeline + export)
+├── resources/                      # Databricks resources (pipeline definition)
+├── scratch/                        # Exploratory analysis behind the design choices
 ├── src/                            # Source code
 ├── tests/                          # Tests
 ├── .gitignore                      # Git ignore patterns
+├── .justfile                       # Development automation
 ├── .pre-commit-config.yaml         # Pre-commit hooks configuration
 ├── .python-version                 # Python version specification
-├── CHANGELOG.md                    # Project changelog
 ├── databricks.yml                  # Bundle configuration
-├── .justfile                       # Development automation
 ├── pyproject.toml                  # Python project configuration
 ├── README.md                       # Project documentation
-└── release.config.mjs              # Semantic release configuration
+└── uv.lock                         # Pinned dependency versions
 ```
 
 ## Project Configuration
@@ -44,7 +44,7 @@ The Python project configuration file that defines:
 - **Project metadata**: Name, version, description, author information, and Python version requirements
 - **Dependencies**: Core dependencies are minimal by default, with comprehensive development dependencies including:
   - `databricks-connect` for local Databricks development
-  - `databricks-sdk` and `databricks-dlt` for Databricks integration
+  - `databricks-sdk` for Databricks integration
   - Python tooling: `ruff`, `ty`, `pytest`, `prek`, `commitizen`
 - **Tool configuration**:
   - **Ruff**: Linting and formatting with RevoData's coding standards
@@ -54,7 +54,9 @@ The Python project configuration file that defines:
 
 ## Code Quality
 
-We ~~encourage~~ enforce code quality with pre-commit hooks and the CI pipeline.
+We ~~encourage~~ enforce code quality with pre-commit hooks and the CI
+workflow in `.github/workflows/pr-deploy-dev.yml`, which runs the same
+checks on every pull request. See [Bundle Deployment](bundle_deployment.md).
 
 ### Pre-commit Hooks
 

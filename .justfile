@@ -20,9 +20,6 @@ set tempdir := ".just"
 # Imports Declarative Automation Bundle related recipes if they are deployed.
 import? '.just/dab.justfile'
 
-# Imports VS Code related recipes if they are deployed.
-import? '.just/vscode.justfile'
-
 # Complete project setup: check tools, sync dependencies, set up git and pre-commit hooks
 [default]
 [script]
