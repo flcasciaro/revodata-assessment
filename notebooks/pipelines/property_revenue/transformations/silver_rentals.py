@@ -23,7 +23,7 @@ expectations = {
 # COMMAND ----------
 
 
-@dp.table(
+@dp.materialized_view(
     name="silver_rentals",
     table_properties={"quality": "silver"},
     comment="Cleaned Kamernet rentals with parsed rent/area and a derived postcode4.",

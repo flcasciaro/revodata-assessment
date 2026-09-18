@@ -18,7 +18,7 @@ airbnb_path = require_conf(spark, "airbnb_path")
 # COMMAND ----------
 
 
-@dp.table(
+@dp.materialized_view(
     name="bronze_airbnb",
     table_properties={"quality": "bronze"},
     comment="Raw Airbnb listings, ingested as-is from the scraped CSV export.",

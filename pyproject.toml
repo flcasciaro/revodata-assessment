@@ -95,7 +95,8 @@ python-version = "3.12"
 exclude = ["scratch"]
 
 # The pipeline notebooks use Databricks' dynamically-typed pyspark.pipelines
-# API (e.g. `dp.table`, `dp.expect_all_or_drop`), which has no type information.
+# API (e.g. `dp.materialized_view`, `dp.expect_all_or_drop`), which has no
+# type information.
 [[tool.ty.overrides]]
 include = ["notebooks/**"]
 

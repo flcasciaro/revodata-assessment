@@ -18,7 +18,7 @@ rentals_path = require_conf(spark, "rentals_path")
 # COMMAND ----------
 
 
-@dp.table(
+@dp.materialized_view(
     name="bronze_rentals",
     table_properties={"quality": "bronze"},
     comment="Raw Kamernet rental listings, ingested as-is from the scraped JSON export.",

@@ -14,7 +14,7 @@ from revodata_assessment.transformations.gold import postcode_revenue
 # COMMAND ----------
 
 
-@dp.table(
+@dp.materialized_view(
     name="gold_airbnb_postcode_revenue",
     table_properties={"quality": "gold"},
     comment="Airbnb listing count and estimated annual revenue per postcode4.",

@@ -31,11 +31,31 @@ bronze_airbnb  ──▶ silver_airbnb  ──▶ gold_airbnb_property_revenue  
 Reusable parsing and Spark transformation logic lives in
 `src/revodata_assessment/` (`cleaning.py`, `geo.py`,
 `transformations/*.py`) and is unit tested independently of the pipeline
-notebooks, which stay thin wiring around `@dp.table`. Streaming ingestion
-(Level 4) was intentionally skipped: both sources are static, one-off
-exports, so a streaming Auto Loader would add operational complexity
-(checkpoints, schema evolution handling) without a real freshness
-requirement to justify it.
+notebooks, which stay thin wiring around `@dp.materialized_view`.
+
+Every dataset is a materialized view rather than a streaming table. All
+nine return a batch DataFrame, so Lakeflow materializes them as views
+regardless -- `@dp.table` would produce exactly the same thing, since that
+is the legacy DLT spelling and the modern API reserves it for streaming
+tables. Naming the decorator explicitly states the intent instead of
+leaving it inferred from the return type.
+
+Streaming ingestion (Level 4) was intentionally skipped: both sources are
+static, one-off exports, so a streaming Auto Loader would add operational
+complexity (checkpoints, schema evolution handling) without a real
+freshness requirement to justify it. It would also buy nothing here.
+Auto Loader incrementalizes at file granularity, not record granularity --
+every knob it exposes (`maxFilesPerTrigger`, `maxBytesPerTrigger`,
+`maxFileAge`) counts files or bytes. `rentals.json` is a single 69 MB file
+holding one JSON array on one line, so a streaming read would produce one
+micro-batch containing all 46,722 records on the first run and nothing
+thereafter -- the same single read the batch does. Worse, a streaming
+table is append-only: if the file were re-scraped and overwritten in
+place, Auto Loader would skip it by default, and with
+`cloudFiles.allowOverwrites` it would re-append all 46,722 rows as
+duplicates rather than refreshing them. Auto Loader would become the right
+tool if the source arrived as many files over time (a dated drop per
+scrape), where file-level incrementalization actually means something.
 
 ## City scope
 

@@ -22,7 +22,7 @@ assumed_occupied_nights_per_year = int(
 # COMMAND ----------
 
 
-@dp.table(
+@dp.materialized_view(
     name="gold_airbnb_property_revenue",
     table_properties={"quality": "gold"},
     comment="Estimated annual revenue per Airbnb listing.",

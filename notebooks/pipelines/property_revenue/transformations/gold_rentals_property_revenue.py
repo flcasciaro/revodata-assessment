@@ -15,7 +15,7 @@ from revodata_assessment.transformations.gold import rentals_property_revenue
 # COMMAND ----------
 
 
-@dp.table(
+@dp.materialized_view(
     name="gold_rentals_property_revenue",
     table_properties={"quality": "gold"},
     comment="Estimated annual revenue per Kamernet listing.",
