@@ -22,6 +22,59 @@ long-term (Kamernet) vs. short-term (Airbnb) rental income.
 
 The `revodata-assessment` project was generated from [RevoData Declarative Automation Bundle Templates](https://github.com/revodatanl/revo-dabs) version `1.0.0`.
 
+## Results
+
+Parquet snapshots of all five gold tables live in [`data/output`](data/output),
+exported from a real pipeline run on Databricks serverless. The table that
+answers the assessment's question is `gold_postcode_revenue`: one row per
+4-digit postal code, with the average estimated annual revenue for each
+channel side by side and a `more_profitable_channel` column.
+
+It covers **1,828 postal codes**, but the two sources do not overlap evenly:
+
+| Coverage | Postal codes |
+| --- | ---: |
+| Kamernet listings only | 1,743 |
+| Both channels | 81 |
+| Airbnb listings only | 4 |
+
+**Read `more_profitable_channel` with that coverage in mind.** Counted across
+all 1,828 rows it reports `rental` 1,744 times and `airbnb` 84 times, which
+looks like a decisive win for long-term leasing. It is not. Where a postal
+code has no Airbnb listings at all there is nothing to compare, and the
+column falls back to `rental`; 1,743 of those 1,744 rows are that fallback
+rather than an actual comparison.
+
+Restricted to the 81 postal codes where **both** channels are present, the
+result inverts:
+
+| Among postcodes with both channels (81) | |
+| --- | ---: |
+| Airbnb more profitable | 80 |
+| Kamernet more profitable | 1 |
+| Median avg. annual revenue, Kamernet | EUR 11,189 |
+| Median avg. annual revenue, Airbnb | EUR 33,604 |
+
+So on this data short-term letting looks roughly three times more profitable
+wherever a like-for-like comparison is possible -- concentrated in Amsterdam,
+since every Airbnb zipcode in the source falls in the 10xx-11xx range while
+the Kamernet export covers ~700 Dutch cities.
+
+Two caveats before taking that at face value, both detailed in
+[Pipeline Design](docs/pipeline.md):
+
+- The Airbnb figure assumes 180 occupied nights per year and **ignores
+  Amsterdam's 30-night regulatory cap** on short-term letting of entire
+  homes. That inflates the Airbnb side substantially for exactly the
+  postcodes where the comparison is possible.
+- Neither source contains booking history, so "revenue" is a documented
+  estimate throughout, not an observed figure.
+
+Single-sided postal codes are deliberately kept rather than dropped -- an
+area with Kamernet supply and no Airbnb presence is itself an
+investment-potential signal -- but that design choice is what makes the
+raw `more_profitable_channel` counts misleading at national scope.
+
 ## Prerequisites
 
 Ensure you have the following tools installed:
