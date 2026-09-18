@@ -37,20 +37,23 @@ exports, so a streaming Auto Loader would add operational complexity
 (checkpoints, schema evolution handling) without a real freshness
 requirement to justify it.
 
-## Why Amsterdam only
+## City scope
 
 `rentals.json` covers every Dutch city (46,722 rows across ~700 cities;
 Amsterdam is the largest at 8,095). `airbnb.csv` has no city column, but
-every zipcode observed is in the 10xx-11xx range, i.e. Amsterdam only. Since
-the assessment's scenario is specifically an Amsterdam investment, and a
-Kamernet-vs-Airbnb comparison only makes sense where both sources have data,
-`silver_rentals` filters to `city == "Amsterdam"`.
+every zipcode observed is in the 10xx-11xx range, i.e. Amsterdam only. The
+pipeline does not filter either source by city: `silver_rentals` keeps all
+~700 cities and carries `city` through as a column, so downstream consumers
+can scope the data themselves. The practical consequence is that the
+Kamernet-vs-Airbnb comparison in `gold_postcode_revenue` is only populated
+on both sides for postcodes where Airbnb has listings -- elsewhere the
+Airbnb columns are simply absent from the join.
 
 ## Why postcode4
 
 Both sources ultimately support a 4-digit postal code (PC4): Kamernet's
-`postalCode` is always a full 6-character code (verified for all 8,095
-Amsterdam rows during EDA -- see `scratch/eda.ipynb`), and the
+`postalCode` is always a full 6-character code (verified during EDA -- see
+`scratch/eda.ipynb`), and the
 `post_codes.geojson` reference dataset used for backfilling Airbnb is itself
 keyed by PC4, not the 6-character code. A PC4 area in Amsterdam is roughly
 street-block-to-neighborhood sized, which is granular enough to spot
@@ -66,8 +69,8 @@ throughout silver and gold.
   `areaSqm` are scraped as free text (`"€ 950,-  Utilities incl."`,
   `"14 m2"`) with several other fields wrapped in single-element JSON
   arrays by the scraper (e.g. `_id`); these are parsed/flattened into typed
-  columns. Postal codes were already clean 6-character codes for every
-  Amsterdam row, so no backfill was needed on this side.
+  columns. Postal codes were already clean 6-character codes on every row,
+  so no backfill was needed on this side.
 - **Airbnb (`cleaning.normalize_postal_code`, `extract_postcode4`)**: 9,913
   rows, of which 2,254 have no `zipcode` at all, 3,119 already carry a bare
   4-digit code, and 4,530 carry a full 6-character code -- matching the
@@ -139,8 +142,8 @@ rather than filtering inside the reusable transformation functions, so the
 checks stay visible in the pipeline's data quality UI/event log instead of
 being buried in library code:
 
-- `silver_rentals`: non-null `postcode4`, `monthly_rent_eur > 50` (three
-  Amsterdam rows had a junk rent of `€ 1,-`), `area_sqm > 0`.
+- `silver_rentals`: non-null `postcode4`, `monthly_rent_eur > 50` (24 rows
+  across the source carry a junk rent of `€ 1,-`), `area_sqm > 0`.
 - `silver_airbnb`: non-null `postcode4` (i.e. the row must have resolved
   through parsing or the geo backfill), `nightly_price_eur > 0`,
   `accommodates > 0`.
@@ -148,9 +151,11 @@ being buried in library code:
 ## Deployment (Level 3)
 
 Deployed as a Databricks Asset (Declarative Automation) Bundle --
-`resources/property_revenue_pipeline.yml` defines the pipeline and a daily
-job that runs it. `databricks.yml`'s `dev`/`test`/`prod` targets follow the
-bundle template unchanged. Data file paths are passed in as pipeline
+`resources/property_revenue_pipeline.yml` defines the pipeline, which is
+triggered manually; no scheduling job wraps it, since both sources are
+static one-off exports with nothing to re-ingest on a timer.
+`databricks.yml`'s `dev`/`test`/`prod` targets follow the bundle template
+unchanged. Data file paths are passed in as pipeline
 `configuration` (`rentals_path`, `airbnb_path`, `postcodes_geojson_path`)
 resolved from `${workspace.file_path}`, the location the bundle syncs
 `./data` to, rather than hardcoded -- the same pipeline definition works
@@ -158,12 +163,30 @@ across `dev`/`test`/`prod` without editing notebook code.
 
 ## CI/CD and pre-commit (Level 1)
 
-Provided out of the box by the RevoData DAB template and left unchanged:
-`.azure/.azure-pipelines/ci.yml` runs `ruff`, `ty`, `pydoclint`, builds the
-wheel, and runs `pytest` (against a real Databricks Connect session) on
-every push; `cd.yml` deploys the bundle to `test` then, after manual
-approval, `prod`. `.pre-commit-config.yaml` runs the same lint/format/type
-checks locally before a commit is made.
+The live pipeline is GitHub Actions, since this repo is hosted on GitHub:
+`.github/workflows/pr-deploy-dev.yml` runs on every pull request targeting
+`main`. Its `validate` job runs `ruff check`, `ruff format --check`, `ty`
+and `pydoclint`, builds the wheel and diffs it against `src/` to catch a
+source file that would silently not ship, then runs `pytest`. Only if that
+job passes does `deploy-dev` run `databricks bundle validate` and
+`databricks bundle deploy` against the `dev` target, so a PR's code can be
+exercised in the workspace before it is merged. Deploys are serialised
+across PRs with a job-level concurrency group, since every PR targets the
+same `dev` deployment.
+
+Both jobs authenticate with the `DATABRICKS_HOST` and `DATABRICKS_TOKEN`
+repository secrets -- the tests need them as much as the deploy does, since
+`tests/conftest.py` opens a real serverless Databricks Connect session
+rather than a local Spark one.
+
+`.azure/.azure-pipelines/` is the Azure DevOps equivalent that ships with
+the RevoData DAB template (`ci.yml` on push, `cd.yml` deploying to `test`
+then `prod` behind a manual approval). It is kept for reference but is not
+wired up: its `groupName`, `keyVaultName` and `azureSubscription` variables
+are still template placeholders.
+
+`.pre-commit-config.yaml` runs the same lint/format/type checks locally
+before a commit is made.
 
 ## Exporting to `data/output`
 
