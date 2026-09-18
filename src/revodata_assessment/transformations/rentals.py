@@ -2,8 +2,8 @@
 
 Row-level quality gates (e.g. dropping rows with no usable postal code) are
 declared as Lakeflow expectations in the pipeline notebook that calls
-`clean_rentals`, not here -- this module only parses, types and scopes the
-data so those expectations stay visible in the pipeline's data quality UI.
+`clean_rentals`, not here -- this module only parses and types the data so
+those expectations stay visible in the pipeline's data quality UI.
 """
 
 import pyspark.sql.functions as F
@@ -11,24 +11,22 @@ from pyspark.sql import DataFrame
 
 from revodata_assessment.cleaning import extract_postcode4, parse_area_sqm, parse_currency
 
-AMSTERDAM_CITY = "Amsterdam"
 
-
-def clean_rentals(df: DataFrame, city: str = AMSTERDAM_CITY) -> DataFrame:
-    """Clean raw Kamernet listings into a typed, city-scoped silver dataset.
+def clean_rentals(df: DataFrame) -> DataFrame:
+    """Clean raw Kamernet listings into a typed silver dataset.
 
     Kamernet's `rent` and `areaSqm` fields are scraped as free-text strings
     (e.g. "€ 950,-  Utilities incl.", "14 m2"), and several fields are
     wrapped in single-element arrays by the scraper, so this flattens,
-    parses and casts them into their real types. The source dataset spans
-    every Dutch city; scoping to `city` narrows it to the assessment's
-    Amsterdam investment scenario, matching the Airbnb source.
+    parses and casts them into their real types. Every city in the source is
+    kept; `city` is carried through as a column so downstream consumers can
+    scope the data themselves.
     """
     parse_currency_udf = F.udf(parse_currency, "double")
     parse_area_sqm_udf = F.udf(parse_area_sqm, "double")
     extract_postcode4_udf = F.udf(extract_postcode4, "string")
 
-    return df.filter(F.col("city") == city).select(
+    return df.select(
         F.element_at(F.col("_id"), 1).alias("rental_id"),
         F.col("city"),
         F.col("propertyType").alias("property_type"),

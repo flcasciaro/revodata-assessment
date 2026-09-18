@@ -1,0 +1,112 @@
+# Runs on every pull request targeting `main`: lints, type-checks and runs the
+# test suite, then deploys the bundle to the `dev` target so the PR's code can
+# be validated in the workspace before it is merged.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   DATABRICKS_HOST   e.g. https://dbc-4d4be1f8-2bc1.cloud.databricks.com
+#   DATABRICKS_TOKEN  a personal access token for that workspace
+# The tests need these too, not just the deploy: tests/conftest.py opens a real
+# serverless Databricks Connect session rather than a local Spark one.
+
+name: PR to main - test and deploy to dev
+
+on:
+  pull_request:
+    branches: [main]
+  # Allows re-running the whole thing by hand from the Actions tab.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to the same PR supersedes the run still in flight for it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+jobs:
+  validate:
+    name: Lint, type-check and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # Installs the Python version pinned in .python-version as a side effect
+      # of `uv sync`, so the toolchain matches local development exactly.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install development environment from uv.lock
+        run: uv sync --frozen
+
+      - name: Run formatting checks
+        run: |
+          set -e
+          echo "Running ruff check"
+          uv run ruff check --output-format=concise .
+          echo "Running ruff format"
+          uv run ruff format --check .
+          echo "Running ty"
+          uv run ty check --output-format=concise .
+          echo "Running pydoclint"
+          uv run pydoclint .
+
+      # Guards against a source file that never makes it into the wheel the
+      # bundle deploys -- the pipeline imports `revodata_assessment` from it.
+      - name: Build and validate package
+        run: |
+          set -e
+          uv build
+          tar -xzf dist/revodata_assessment-*.tar.gz
+          diff -r -x __pycache__ src revodata_assessment-*/src
+
+      - name: Run tests
+        run: uv run pytest -v tests --cov=src --cov-report=term
+
+  deploy-dev:
+    name: Deploy bundle to dev
+    needs: validate
+    runs-on: ubuntu-latest
+    # Serialised across PRs: every PR deploys to the same `dev` target, so two
+    # concurrent deploys would race on the same bundle state.
+    concurrency:
+      group: databricks-bundle-deploy-dev
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # `databricks.yml` builds the wheel artifact with `uv build`, so uv has to
+      # be on PATH before the bundle commands run.
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Validate bundle
+        run: databricks bundle validate --target dev
+
+      - name: Deploy bundle to dev
+        run: databricks bundle deploy --target dev
+
+      - name: Summarise deployed resources
+        run: |
+          {
+            echo "### Deployed to \`dev\`"
+            echo
+            echo '```'
+            databricks bundle summary --target dev
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
