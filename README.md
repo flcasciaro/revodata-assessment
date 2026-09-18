@@ -9,8 +9,8 @@
 [![semantic-release: angular](https://img.shields.io/badge/semantic--release-angular-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
 
 RevoData technical assessment submission: a medallion-architecture Databricks
-pipeline that ingests Kamernet rental and Airbnb listing data for Amsterdam,
-cleans it, backfills missing Airbnb postal codes from geo data, and
+pipeline that ingests Kamernet rental and Airbnb listing data, cleans it,
+backfills missing Airbnb postal codes from geo data, and
 estimates potential revenue per property and per postal code to compare
 long-term (Kamernet) vs. short-term (Airbnb) rental income.
 

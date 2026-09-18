@@ -23,6 +23,6 @@ per postal code.
 - `explorations`: ad-hoc notebooks used to sanity-check the gold tables.
   Not executed as part of the pipeline.
 
-See `../../../docs/pipeline.md` for the design rationale (why Amsterdam-only
-scoping, why postcode4, the revenue assumptions, and the geo backfill
-approach) rather than a restatement of the code here.
+See `../../../docs/pipeline.md` for the design rationale (city scope, why
+postcode4, the revenue assumptions, and the geo backfill approach) rather
+than a restatement of the code here.

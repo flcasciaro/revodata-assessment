@@ -1,22 +1,4 @@
 resources:
-  jobs:
-    property-revenue-pipeline-job:
-      name: property-revenue-pipeline-job
-
-      schedule:
-        # Run every day at 6:00 AM, ahead of the business day.
-        quartz_cron_expression: 0 0 6 * * ?
-        timezone_id: Europe/Amsterdam
-
-      email_notifications:
-        on_failure:
-          - notifications@example.com
-
-      tasks:
-        - task_key: pipeline-task
-          pipeline_task:
-            pipeline_id: ${resources.pipelines.property_revenue.id}
-
   pipelines:
     property_revenue:
       name: property-revenue-pipeline
@@ -46,7 +28,6 @@ resources:
         rentals_path: ${workspace.file_path}/data/rentals.json
         airbnb_path: ${workspace.file_path}/data/airbnb.csv
         postcodes_geojson_path: ${workspace.file_path}/data/geo/post_codes.geojson
-        amsterdam_city: Amsterdam
         # Simplifying assumption for Airbnb's annual revenue estimate; see docs/pipeline.md.
         airbnb_assumed_occupied_nights_per_year: "180"
 

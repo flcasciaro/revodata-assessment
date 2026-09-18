@@ -59,16 +59,16 @@ def _bronze_rentals(spark: SparkSession) -> DataFrame:
     return spark.createDataFrame(rows, schema=_BRONZE_RENTALS_SCHEMA)
 
 
-def test_clean_rentals_scopes_to_city(spark: SparkSession) -> None:
-    """Only listings in the requested city survive, e.g. the Rotterdam row is dropped."""
-    result = clean_rentals(_bronze_rentals(spark), city="Amsterdam").collect()
-    assert len(result) == 1
-    assert result[0]["city"] == "Amsterdam"
+def test_clean_rentals_keeps_all_cities(spark: SparkSession) -> None:
+    """No city scoping is applied -- every source listing survives."""
+    result = clean_rentals(_bronze_rentals(spark)).collect()
+    assert len(result) == 2
+    assert {row["city"] for row in result} == {"Amsterdam", "Rotterdam"}
 
 
 def test_clean_rentals_parses_and_derives_fields(spark: SparkSession) -> None:
     """Rent, area and postal code fields are parsed, cast and derived correctly."""
-    result = clean_rentals(_bronze_rentals(spark), city="Amsterdam").collect()[0]
+    result = clean_rentals(_bronze_rentals(spark)).filter("rental_id = 'abc123'").collect()[0]
 
     assert result["rental_id"] == "abc123"
     assert result["postal_code"] == "1052AB"
