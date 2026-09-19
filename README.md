@@ -148,6 +148,10 @@ removes everything again.
 
 ### 4. Tests
 
+```bash
+just test
+```
+
 `tests/conftest.py` opens a real serverless Databricks Connect session rather
 than a local Spark one, so 12 of the 48 tests need a reachable workspace and
 valid credentials. Without them those 12 fail with `default auth: cannot
@@ -155,9 +159,65 @@ configure default credentials` while the other 36 pass. The same credentials
 drive CI, as two repository secrets -- see
 [Bundle Deployment](docs/bundle_deployment.md).
 
-```bash
-just test
+#### Why Databricks Connect and not a local PySpark session
+
+A local `SparkSession` would make those 12 tests run offline in seconds, which
+is tempting. It was rejected for three reasons:
+
+- **It would test a different engine than the one that runs the pipeline.** On
+  Databricks serverless, Python UDFs execute in an isolated sandbox, Unity
+  Catalog governs every read, and the execution model is Spark Connect rather
+  than a local JVM. Asserting that `clean_rentals` works under local Spark
+  proves it works somewhere the pipeline never runs.
+- **The two cannot share one virtualenv.** `databricks-connect` ships its own
+  `pyspark` and [conflicts with a separately installed
+  one](https://docs.databricks.com/aws/en/dev-tools/databricks-connect/python/troubleshooting#conflicting-pyspark-installations),
+  so supporting both would mean two dependency sets and two ways to be wrong.
+- **The serverless-specific failures are the ones worth catching.** Two real
+  bugs surfaced this way and could not have surfaced locally: the geo UDF's
+  polygon closure intermittently failing to materialize on the executor (fixed
+  in `geo.make_postcode_lookup_udf` by closing over a path instead of the
+  polygons), and `shapely` missing from the remote UDF environment (fixed with
+  `DatabricksEnv().withDependencies(...)` in `tests/conftest.py`).
+
+The cost is a suite that is not hermetic: it needs a workspace, and a full run
+takes minutes rather than seconds. For a project whose entire job is to run on
+Databricks, that is the right trade.
+
+#### Why a trial workspace and not Databricks Free Edition
+
+This was built against a 14-day Databricks **free trial** workspace rather than
+the free-forever **Free Edition** that replaced Community Edition. Free Edition
+was tried first and cannot run this project.
+
+There, 6 of the 48 tests fail with:
+
 ```
+pyspark.errors.exceptions.connect.SparkException:
+[ISOLATION_STARTUP_FAILURE.SANDBOX_STARTUP] Failed to start isolated execution environment.
+```
+
+Those 6 are exactly and only the tests that execute a **Python UDF** on the
+remote serverless cluster: the 2 in `tests/test_transformations_rentals.py`
+(`clean_rentals` wraps the `cleaning.py` parsers as `F.udf`) and the 4 in
+`tests/test_transformations_airbnb.py` (`F.udf` plus the `pandas_udf` geo
+lookup). The other 6 Spark tests pass -- they use only native Spark
+expressions and never need a sandbox.
+
+On serverless every Python UDF runs in an isolated container, and
+[`ISOLATION_STARTUP_FAILURE.SANDBOX_STARTUP`](https://docs.databricks.com/aws/en/error-messages/isolation-startup-failure-error-class)
+means that container never started. It is a platform-level error (SQLSTATE
+`XXKSS`) whose documented remedy is to contact Databricks support, which Free
+Edition does not include. It is consistent with two published [Free Edition
+limitations](https://docs.databricks.com/aws/en/getting-started/free-edition-limitations):
+outbound internet access restricted to a small set of trusted domains -- the
+test session declares a custom environment that must install `shapely` from
+PyPI before any UDF sandbox can start -- and tight serverless compute quotas.
+
+The same commit, changing only the CLI profile, runs 48/48 on the trial
+workspace. And since the Level 5 postal code backfill *is* a pandas UDF, a
+workspace that cannot start UDF sandboxes cannot run the pipeline either, not
+just its tests. Hence the trial.
 
 ### 5. Regenerating `data/output` (optional)
 
@@ -175,6 +235,93 @@ Replace each directory rather than copying over it -- Spark names every part
 file after a fresh transaction id, so copying on top leaves two part files per
 folder and silently doubles every table. Full detail in
 [Pipeline Design](docs/pipeline.md#exporting-to-dataoutput).
+
+## How this was built
+
+Three phases, in that order; `git log` follows the same arc.
+
+### 1. Exploration, run directly on Databricks
+
+Before any pipeline code, both sources were explored in a notebook running on
+the workspace itself -- `scratch/eda.ipynb`, kept in the repo as the record the
+design decisions rest on. It reads the raw files from Workspace Files with
+Spark, so the exploration ran against the same engine and the same data the
+pipeline would later use, not against a pandas sample on a laptop.
+
+What it established:
+
+- **Kamernet (`rentals.json`)** -- 46,722 listings across ~700 Dutch cities
+  (Amsterdam the largest at 8,095). `postalCode` is a clean 6-character code on
+  *every* row, so no backfill is needed on this side. `rent` and `areaSqm`,
+  however, are scraped free text (`"EUR 950,-  Utilities incl."`, `"14 m2"`),
+  and several fields arrive wrapped in single-element JSON arrays.
+- **Airbnb (`airbnb.csv`)** -- 9,913 listings, no city column, every observed
+  zipcode in the Amsterdam 10xx-11xx range. Only 4,530 rows carry a full
+  6-character code; 3,119 carry a bare 4-digit one and 2,254 have no `zipcode`
+  at all. Every row missing a zipcode does have coordinates, which is what
+  makes the geo backfill viable. Roughly 388 rows are exact duplicates, and
+  about 10 more hide a valid postcode inside noisy text (`"Nederland 1091 TS"`,
+  `"1018  DW"`) that a strict format check would have discarded.
+- **The join key** -- Kamernet is 6-character, Airbnb is mixed, and
+  `post_codes.geojson` is keyed by 4-digit PC4 only, so PC4 is the one key both
+  sources can support. A PC4 area is roughly block-to-neighbourhood sized:
+  granular enough to show patterns, coarse enough to keep per-postcode averages
+  meaningful.
+- **The backfill prototype** -- the point-in-polygon lookup was proven in the
+  notebook as a `pandas_udf` over the ~470 PC4 polygons before being promoted
+  to `src/revodata_assessment/geo.py`.
+
+Full reasoning in [Pipeline Design](docs/pipeline.md).
+
+### 2. Implementation, in iterations
+
+The pipeline was not written in one pass. The steps that actually changed the
+design:
+
+1. **Medallion skeleton** -- bronze/silver/gold as Lakeflow Declarative
+   Pipeline notebooks, with the reusable logic split out into
+   `src/revodata_assessment/` so it could be unit tested away from the
+   pipeline. That split answers the assessment asking for buildable packages in
+   `src` *and* notebooks: the notebooks stay thin wiring, the wheel carries the
+   logic and is installed into the pipeline environment via `${var.wheel_path}`.
+2. **Serverless everywhere** -- pipeline, tests and deploy target all moved to
+   serverless compute. This is what forced the custom UDF environment and the
+   artifact shipping in `tests/conftest.py`.
+3. **Modern pipeline API** -- migrated off the legacy DLT spelling onto
+   `pyspark.pipelines` (`dp.materialized_view`, `dp.expect_all_or_drop`).
+4. **Dropping the Amsterdam filter** -- an early version scoped rentals to
+   Amsterdam. Nothing in the assessment asked for that, and it silently
+   discarded ~38k of the 46,722 Kamernet listings, so it was removed across the
+   codebase and the gold Parquet exports were regenerated without it.
+5. **Materialized views, stated explicitly** -- every dataset returns a batch
+   DataFrame, so `@dp.table` and `@dp.materialized_view` build the same thing.
+   The decorator was made explicit so the intent is readable instead of
+   inferred from a return type.
+6. **Streaming, evaluated and declined** -- a streaming read of `rentals.json`
+   was prototyped, then deliberately dropped. Auto Loader incrementalizes per
+   *file*, not per record, and `rentals.json` is a single 69 MB file holding one
+   JSON array: the stream yields one micro-batch with all 46,722 rows and
+   nothing afterwards. The analysis is kept in
+   [Pipeline Design](docs/pipeline.md) rather than in code.
+
+### 3. CI/CD
+
+`.github/workflows/pr-deploy-dev.yml` runs on every pull request to `main`:
+
+- **`validate`** -- `ruff check`, `ruff format --check`, `ty` and `pydoclint`;
+  then a packaging guard that unpacks the built sdist and diffs it against
+  `src/`, so a source file that never makes it into the wheel fails CI instead
+  of the pipeline; then the full `pytest` suite with coverage.
+- **`deploy-dev`** -- gated on `validate`: `databricks bundle validate` and
+  `databricks bundle deploy --target dev`, then `bundle summary` written to the
+  GitHub step summary. Deploys are serialised through a concurrency group,
+  because every PR targets the same `dev` bundle state.
+
+Since the tests open a real Databricks Connect session, CI needs the same
+credentials the deploy does: `DATABRICKS_HOST` and `DATABRICKS_TOKEN` as
+**repository** secrets -- environment secrets are not visible to the job and
+produce exactly the `default auth: cannot configure default credentials`
+failure described above. See [Bundle Deployment](docs/bundle_deployment.md).
 
 ## Documentation
 
