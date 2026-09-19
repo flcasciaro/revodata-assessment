@@ -323,6 +323,12 @@ credentials the deploy does: `DATABRICKS_HOST` and `DATABRICKS_TOKEN` as
 produce exactly the `default auth: cannot configure default credentials`
 failure described above. See [Bundle Deployment](docs/bundle_deployment.md).
 
+### Session transcripts
+
+`claude_sessions/` holds the raw Claude Code session exports (one `.jsonl` per
+session) from building this project. They are committed as-is so the work
+described above can be traced back to the conversations that produced it.
+
 ## Documentation
 
 Comprehensive documentation can be found in the [documentation](docs/README.md).
